@@ -1,0 +1,9 @@
+name: ShowItem
+version: 1.0
+main: club.without.dereku.showitem.ShowItem
+author: Dereku
+softdepend: [DeluxeChat]
+commands: 
+    show:
+        permission: showitem.use
+        default: op

@@ -1,0 +1,18 @@
+"}, {
+        "text": "[",
+        "color": "dark_purple"
+    }, {
+        "translate": "%itemName%",
+        "color": "dark_purple",
+        "hoverEvent": {
+            "action": "show_item",
+            "value": "%itemStack%"
+        }
+    }, {
+        "text": "%amount%",
+        "color": "dark_purple"
+    }, {
+        "text": "]",
+        "color": "dark_purple"
+    }, {
+    "text": "%dc%
