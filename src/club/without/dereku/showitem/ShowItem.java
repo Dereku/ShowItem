@@ -121,7 +121,6 @@ public class ShowItem extends JavaPlugin {
                 .replace("%itemName%", this.getItemStackName(is))
                 .replace("%amount%", is.getAmount() > 1 ? "x" + is.getAmount() : "")
                 .replace("%itemStack%", this.parseItemStack(is));
-        this.getLogger().info(msg);
         this.broadcast(msg);
         return true;
     }
