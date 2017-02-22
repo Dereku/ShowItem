@@ -1,8 +1,8 @@
 name: ShowItem
-version: 1.0
+version: 1.2
 main: club.without.dereku.showitem.ShowItem
 author: Dereku
-softdepend: [DeluxeChat]
+mail: [dereku@without.club, dereku@default.im]
 commands: 
     show:
         permission: showitem.use

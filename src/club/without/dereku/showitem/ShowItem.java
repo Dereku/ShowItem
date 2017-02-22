@@ -30,23 +30,20 @@ import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Iterator;
-import java.util.Map;
 import java.util.Properties;
 import java.util.logging.Level;
-import net.minecraft.server.v1_8_R3.IChatBaseComponent;
-import net.minecraft.server.v1_8_R3.MinecraftKey;
-import net.minecraft.server.v1_8_R3.PacketPlayOutChat;
+import net.minecraft.server.v1_11_R1.EnumColor;
+import net.minecraft.server.v1_11_R1.IChatBaseComponent;
+import net.minecraft.server.v1_11_R1.NBTTagCompound;
+import net.minecraft.server.v1_11_R1.PacketPlayOutChat;
+import org.bukkit.craftbukkit.v1_11_R1.entity.CraftPlayer;
+import org.bukkit.craftbukkit.v1_11_R1.inventory.CraftItemStack;
 import org.apache.commons.io.FileUtils;
 import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
-import org.bukkit.craftbukkit.v1_8_R3.entity.CraftPlayer;
-import org.bukkit.craftbukkit.v1_8_R3.inventory.CraftItemStack;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.BannerMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -105,12 +102,6 @@ public class ShowItem extends JavaPlugin {
                 this.getLogger().log(Level.WARNING, "Epic fail.");
             }
         }
-        
-        //DeluxeChat listener. 
-        if (this.getServer().getPluginManager().isPluginEnabled("DeluxeChat")) {
-            this.getServer().getPluginManager().registerEvents(new DeluxeChatListener(this), this);
-        }
-
     }
 
     @Override
@@ -119,104 +110,35 @@ public class ShowItem extends JavaPlugin {
             return true;
         }
         Player plr = (Player) sender;
-        ItemStack is = plr.getItemInHand();
+        ItemStack is = plr.getInventory().getItemInMainHand();
         if (is.getType().equals(Material.AIR)) {
             plr.sendMessage(this.locale.getProperty("SHOW_AIR", "SHOW_AIR"));
             return true;
         }
-
-        this.broadcast(this.message
+        
+        String msg = this.message
                 .replace("%player%", plr.getName())
                 .replace("%itemName%", this.getItemStackName(is))
                 .replace("%amount%", is.getAmount() > 1 ? "x" + is.getAmount() : "")
-                .replace("%itemStack%", this.parseItemStack(is)));
+                .replace("%itemStack%", this.parseItemStack(is));
+        this.getLogger().info(msg);
+        this.broadcast(msg);
         return true;
     }
 
-    //Easy way? Where?
+    //Easy way founded
     public String parseItemStack(ItemStack is) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{id:")
-                .append(this.getTrueMaterialName(is))
-                .append(",Damage:")
-                .append(is.getDurability());
-
-        if (is.getItemMeta().hasEnchants() || is.getItemMeta().hasLore() || is.getItemMeta().hasDisplayName()) {
-            sb.append(",tag:{");
-
-            //Check for enchantments
-            if (is.getItemMeta().hasEnchants()) {
-                sb.append("ench:[");
-                for (Iterator<Map.Entry<Enchantment, Integer>> it = is.getItemMeta().getEnchants().entrySet().iterator(); it.hasNext();) {
-                    Map.Entry<Enchantment, Integer> e = it.next();
-                    sb.append("{id:")
-                            .append(e.getKey().getId())
-                            .append(",lvl:")
-                            .append(e.getValue())
-                            .append("}");
-
-                    if (it.hasNext()) {
-                        sb.append(",");
-                    }
-                }
-                sb.append("]");
-            }
-
-            //Check for name / lore
-            if (is.getItemMeta().hasLore() || is.getItemMeta().hasDisplayName()) {
-                if (is.getItemMeta().hasEnchants()) {
-                    sb.append(",");
-                }
-
-                sb.append("display:{");
-
-                //This item has name?
-                if (is.getItemMeta().hasDisplayName()) {
-                    sb.append("Name:\\\"")
-                            .append(is.getItemMeta().getDisplayName())
-                            .append("\\\"");
-                    //Lore?
-                    if (is.getItemMeta().hasLore()) {
-                        sb.append(",");
-                    }
-                }
-
-                //This item has lore?
-                if (is.getItemMeta().hasLore()) {
-                    sb.append("Lore:[");
-
-                    for (Iterator<String> it = is.getItemMeta().getLore().iterator(); it.hasNext();) {
-                        String str = it.next();
-                        sb.append("\\\"")
-                                .append(str)
-                                .append("\\\"");
-                        if (it.hasNext()) {
-                            sb.append(",");
-                        }
-                    }
-                    sb.append("]");
-                }
-                sb.append("}");
-            }
-            sb.append("}");
-        }
-
-        sb.append("}");
-        return sb.toString();
-    }
-
-    public String getItemStackName(ItemStack is) {
-        if (is.getType().equals(Material.BANNER)) {
-            BannerMeta bm = (BannerMeta) is.getItemMeta();
-            return "item.banner." + bm.getBaseColor().toString().toLowerCase().replace("light_blue", "lightBlue") + ".name";
-        }
-        return CraftItemStack.asNMSCopy(is).a() + ".name";
+        NBTTagCompound nbt = new NBTTagCompound();
+        CraftItemStack.asNMSCopy(is).save(nbt);
+        return nbt.toString().replace("\"", "\\\"");
     }
     
-    public String getTrueMaterialName(ItemStack is) {
-        net.minecraft.server.v1_8_R3.ItemStack nmsItemStack = CraftItemStack.asNMSCopy(is);
-        MinecraftKey key = net.minecraft.server.v1_8_R3.Item.REGISTRY.c(nmsItemStack.getItem());
-        return key.toString();
+    public String getItemStackName(ItemStack is) {
+        if (is.getType().equals(Material.BANNER)) {
+            EnumColor enumcolor = EnumColor.fromInvColorIndex(CraftItemStack.asNMSCopy(is).getData() & 15);
+            return "item.banner." + enumcolor.toString() + ".name";
+        }
+        return CraftItemStack.asNMSCopy(is).a() + ".name";
     }
 
     private void broadcast(String json) {
