@@ -27,18 +27,15 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.nio.charset.Charset;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Properties;
 import java.util.logging.Level;
-import net.minecraft.server.v1_11_R1.EnumColor;
-import net.minecraft.server.v1_11_R1.IChatBaseComponent;
-import net.minecraft.server.v1_11_R1.NBTTagCompound;
-import net.minecraft.server.v1_11_R1.PacketPlayOutChat;
-import org.bukkit.craftbukkit.v1_11_R1.entity.CraftPlayer;
-import org.bukkit.craftbukkit.v1_11_R1.inventory.CraftItemStack;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang.ClassUtils;
 import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -51,15 +48,38 @@ import org.bukkit.plugin.java.JavaPlugin;
  * @author Dereku
  */
 public class ShowItem extends JavaPlugin {
+
     public final Properties locale = new Properties();
     private String message;
     private File messageFile, localeFile;
-    
+
+    //Yay, reflection!
+    private Class classNBTTagCompound;
+    private Class classItemStack;
+
+    private Method asNMSCopy;
+    private Method saveNMSItemStackToNBTTagCompound;
+    private Method getUnlocalizedNameOfNMSItemStack;
+    private Method getDataOfNMSItemStack;
+    private Method fromInvColorIndex;
+    private Method sendMessage;
+    private Method jsonToChatComponent;
+
+    private Object playerListInstance;
+
     @Override
     public void onEnable() {
+        try {
+            this.initReflect();
+        } catch (ClassNotFoundException | NoSuchMethodException | InvocationTargetException | IllegalAccessException ex) {
+            this.getLogger().log(Level.WARNING, "Failed to init reflection", ex);
+            this.getPluginLoader().disablePlugin(this);
+            return;
+        }
+
         this.messageFile = new File(this.getDataFolder().getAbsolutePath(), "message.json");
         this.localeFile = new File(this.getDataFolder().getAbsolutePath(), "locale.properties");
-        
+
         //Check for messages.json
         if (!this.messageFile.exists()) {
             try {
@@ -71,15 +91,15 @@ public class ShowItem extends JavaPlugin {
                 return;
             }
         }
-        
+
         //Load messages.json
         try {
-            this.message = new String(Files.readAllBytes(Paths.get(this.messageFile.toURI())), Charset.forName("UTF-8"));
+            this.message = new String(Files.readAllBytes(Paths.get(this.messageFile.toURI())), StandardCharsets.UTF_8);
         } catch (IOException ex) {
             this.getLogger().log(Level.WARNING, "Failed to load message.json", ex);
             this.setEnabled(false);
         }
-        
+
         //Check for locale.properties
         if (!this.localeFile.exists()) {
             try {
@@ -89,9 +109,10 @@ public class ShowItem extends JavaPlugin {
                 this.getLogger().log(Level.WARNING, "Using inbuilt locale file.");
             }
         }
-        
+
         //Load locale.properties
-        try (InputStreamReader isr = new InputStreamReader(new FileInputStream(this.localeFile), Charset.forName("UTF-8"))) {
+        try (FileInputStream fis = new FileInputStream(this.localeFile);
+                InputStreamReader isr = new InputStreamReader(fis, StandardCharsets.UTF_8)) {
             this.locale.load(isr);
         } catch (IOException ex) {
             this.getLogger().log(Level.WARNING, "Failed to load locale file.", ex);
@@ -104,20 +125,59 @@ public class ShowItem extends JavaPlugin {
         }
     }
 
+    private void initReflect() throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+        String pckg = this.getServer().getClass().getPackage().getName();
+        String nmsVersion = pckg.substring(pckg.lastIndexOf('.') + 1);
+        String nmsPackage = "net.minecraft.server.";
+
+        Class classCraftItemStack = ClassUtils.getClass("org.bukkit.craftbukkit." + nmsVersion + ".inventory.CraftItemStack");
+        this.asNMSCopy = classCraftItemStack.getDeclaredMethod("asNMSCopy", org.bukkit.inventory.ItemStack.class);
+
+        Class classEnumColor = ClassUtils.getClass(nmsPackage + nmsVersion + ".EnumColor", false);
+        this.fromInvColorIndex = classEnumColor.getDeclaredMethod("fromInvColorIndex", int.class);
+
+        Class classCraftServer = ClassUtils.getClass("org.bukkit.craftbukkit." + nmsVersion + ".CraftServer", false);
+        Class classMinecraftServer = ClassUtils.getClass(nmsPackage + nmsVersion + ".MinecraftServer", false);
+        Class classPlayerList = ClassUtils.getClass(nmsPackage + nmsVersion + ".PlayerList", false);
+        Class classIChatBaseComponent = ClassUtils.getClass(nmsPackage + nmsVersion + ".IChatBaseComponent", false);
+        Class classChatSerializer = ClassUtils.getClass(nmsPackage + nmsVersion + ".IChatBaseComponent.ChatSerializer", false);
+
+        this.jsonToChatComponent = classChatSerializer.getDeclaredMethod("a", String.class);
+
+        Method getServer = classCraftServer.getDeclaredMethod("getServer", new Class[0]);
+        Method getPlayerList = classMinecraftServer.getMethod("getPlayerList", new Class[0]);
+
+        Object minecraftServer = getServer.invoke(this.getServer(), new Object[0]);
+        this.playerListInstance = getPlayerList.invoke(minecraftServer, new Object[0]);
+        this.sendMessage = classPlayerList.getMethod("sendMessage", classIChatBaseComponent, boolean.class);
+
+        this.classItemStack = ClassUtils.getClass(nmsPackage + nmsVersion + ".ItemStack", false);
+        this.classNBTTagCompound = ClassUtils.getClass(nmsPackage + nmsVersion + ".NBTTagCompound", false);
+
+        this.getUnlocalizedNameOfNMSItemStack = this.classItemStack.getDeclaredMethod("a", new Class[0]);
+        this.getDataOfNMSItemStack = this.classItemStack.getDeclaredMethod("getData", new Class[0]);
+        this.saveNMSItemStackToNBTTagCompound = this.classItemStack.getDeclaredMethod("save", this.classNBTTagCompound);
+    }
+
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) {
             return true;
         }
-        Player plr = (Player) sender;
-        ItemStack is = plr.getInventory().getItemInMainHand();
+        Player player = (Player) sender;
+        ItemStack is;
+        try {
+            is = player.getInventory().getItemInMainHand();
+        } catch (NoSuchMethodError ex) {
+            is = player.getItemInHand();
+        }
         if (is.getType().equals(Material.AIR)) {
-            plr.sendMessage(this.locale.getProperty("SHOW_AIR", "SHOW_AIR"));
+            player.sendMessage(this.locale.getProperty("SHOW_AIR", "SHOW_AIR"));
             return true;
         }
-        
+
         String msg = this.message
-                .replace("%player%", plr.getName())
+                .replace("%player%", player.getName())
                 .replace("%itemName%", this.getItemStackName(is))
                 .replace("%amount%", is.getAmount() > 1 ? "x" + is.getAmount() : "")
                 .replace("%itemStack%", this.parseItemStack(is));
@@ -125,24 +185,43 @@ public class ShowItem extends JavaPlugin {
         return true;
     }
 
-    //Easy way founded
     public String parseItemStack(ItemStack is) {
-        NBTTagCompound nbt = new NBTTagCompound();
-        CraftItemStack.asNMSCopy(is).save(nbt);
-        return nbt.toString().replace("\"", "\\\"");
-    }
-    
-    public String getItemStackName(ItemStack is) {
-        if (is.getType().equals(Material.BANNER)) {
-            EnumColor enumcolor = EnumColor.fromInvColorIndex(CraftItemStack.asNMSCopy(is).getData() & 15);
-            return "item.banner." + enumcolor.toString() + ".name";
+        try {
+            Object nmsItemStack = this.asNMSCopy.invoke(null, is);
+            Object nbtTagCompound = this.classNBTTagCompound.newInstance();
+            this.saveNMSItemStackToNBTTagCompound.invoke(nmsItemStack, nbtTagCompound);
+            return nbtTagCompound.toString().replace("\"", "\\\"");
+        } catch (InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
+            this.getLogger().log(Level.WARNING, "Failed to parse ItemStack", ex);
+            this.getLogger().log(Level.WARNING, "ItemStack: {0}", is.serialize().toString());
         }
-        return CraftItemStack.asNMSCopy(is).a() + ".name";
+        return "Failed to parse item";
     }
 
-    private void broadcast(String json) {
-        for (Player player : this.getServer().getOnlinePlayers()) {
-            ((CraftPlayer) player).getHandle().playerConnection.sendPacket(new PacketPlayOutChat(IChatBaseComponent.ChatSerializer.a(json), (byte) 1));
+    public String getItemStackName(ItemStack is) {
+        try {
+            Object nmsItemStack = this.asNMSCopy.invoke(null, is);
+
+            if (is.getType().equals(Material.BANNER)) {
+                int data = (int) this.getDataOfNMSItemStack.invoke(nmsItemStack, new Object[0]);
+                Object enumcolor = this.fromInvColorIndex.invoke(null, data & 15);
+                return "item.banner." + enumcolor.toString() + ".name";
+            }
+
+            return this.getUnlocalizedNameOfNMSItemStack.invoke(nmsItemStack, new Object[0]) + ".name";
+        } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
+            this.getLogger().log(Level.WARNING, "Failed to get name of ItemStack", ex);
+            this.getLogger().log(Level.WARNING, "ItemStack: {0}", is.serialize().toString());
+        }
+        return "An error occurred while getting the name of the item";
+    }
+
+    public void broadcast(String json) {
+        try {
+            Object chatBaseComponent = this.jsonToChatComponent.invoke(null, json);
+            this.sendMessage.invoke(this.playerListInstance, chatBaseComponent, false);
+        } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
+            this.getLogger().log(Level.WARNING, "Failed to broadcast message", ex);
         }
     }
 }
