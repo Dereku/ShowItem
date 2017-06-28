@@ -55,8 +55,6 @@ public class ShowItem extends JavaPlugin {
 
     //Yay, reflection!
     private Class classNBTTagCompound;
-    private Class classItemStack;
-
     private Method asNMSCopy;
     private Method saveNMSItemStackToNBTTagCompound;
     private Method getUnlocalizedNameOfNMSItemStack;
@@ -64,7 +62,6 @@ public class ShowItem extends JavaPlugin {
     private Method fromInvColorIndex;
     private Method sendMessage;
     private Method jsonToChatComponent;
-
     private Object playerListInstance;
 
     @Override
@@ -131,7 +128,7 @@ public class ShowItem extends JavaPlugin {
         String nmsPackage = "net.minecraft.server.";
 
         Class classCraftItemStack = ClassUtils.getClass("org.bukkit.craftbukkit." + nmsVersion + ".inventory.CraftItemStack");
-        this.asNMSCopy = classCraftItemStack.getDeclaredMethod("asNMSCopy", org.bukkit.inventory.ItemStack.class);
+        this.asNMSCopy = classCraftItemStack.getDeclaredMethod("asNMSCopy", ItemStack.class);
 
         Class classEnumColor = ClassUtils.getClass(nmsPackage + nmsVersion + ".EnumColor", false);
         this.fromInvColorIndex = classEnumColor.getDeclaredMethod("fromInvColorIndex", int.class);
@@ -151,12 +148,12 @@ public class ShowItem extends JavaPlugin {
         this.playerListInstance = getPlayerList.invoke(minecraftServer, new Object[0]);
         this.sendMessage = classPlayerList.getMethod("sendMessage", classIChatBaseComponent, boolean.class);
 
-        this.classItemStack = ClassUtils.getClass(nmsPackage + nmsVersion + ".ItemStack", false);
+        Class classItemStack = ClassUtils.getClass(nmsPackage + nmsVersion + ".ItemStack", false);
         this.classNBTTagCompound = ClassUtils.getClass(nmsPackage + nmsVersion + ".NBTTagCompound", false);
 
-        this.getUnlocalizedNameOfNMSItemStack = this.classItemStack.getDeclaredMethod("a", new Class[0]);
-        this.getDataOfNMSItemStack = this.classItemStack.getDeclaredMethod("getData", new Class[0]);
-        this.saveNMSItemStackToNBTTagCompound = this.classItemStack.getDeclaredMethod("save", this.classNBTTagCompound);
+        this.getUnlocalizedNameOfNMSItemStack = classItemStack.getDeclaredMethod("a", new Class[0]);
+        this.getDataOfNMSItemStack = classItemStack.getDeclaredMethod("getData", new Class[0]);
+        this.saveNMSItemStackToNBTTagCompound = classItemStack.getDeclaredMethod("save", this.classNBTTagCompound);
     }
 
     @Override
