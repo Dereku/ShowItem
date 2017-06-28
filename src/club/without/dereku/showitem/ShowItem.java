@@ -51,7 +51,6 @@ public class ShowItem extends JavaPlugin {
 
     public final Properties locale = new Properties();
     private String message;
-    private File messageFile, localeFile;
 
     //Yay, reflection!
     private Class classNBTTagCompound;
@@ -74,13 +73,13 @@ public class ShowItem extends JavaPlugin {
             return;
         }
 
-        this.messageFile = new File(this.getDataFolder().getAbsolutePath(), "message.json");
-        this.localeFile = new File(this.getDataFolder().getAbsolutePath(), "locale.properties");
+        File messageFile = new File(this.getDataFolder().getAbsolutePath(), "message.json");
+        File localeFile = new File(this.getDataFolder().getAbsolutePath(), "locale.properties");
 
         //Check for messages.json
-        if (!this.messageFile.exists()) {
+        if (!messageFile.exists()) {
             try {
-                FileUtils.copyInputStreamToFile(this.getResource("message.json"), this.messageFile);
+                FileUtils.copyInputStreamToFile(this.getResource("message.json"), messageFile);
             } catch (IOException ex) {
                 this.getLogger().log(Level.WARNING, "Failed to save default message.", ex);
                 this.getLogger().log(Level.WARNING, "Extract \"message.json\" from ShowItem.jar to \"ShowItem\" folder.");
@@ -91,16 +90,16 @@ public class ShowItem extends JavaPlugin {
 
         //Load messages.json
         try {
-            this.message = new String(Files.readAllBytes(Paths.get(this.messageFile.toURI())), StandardCharsets.UTF_8);
+            this.message = new String(Files.readAllBytes(Paths.get(messageFile.toURI())), StandardCharsets.UTF_8);
         } catch (IOException ex) {
             this.getLogger().log(Level.WARNING, "Failed to load message.json", ex);
             this.setEnabled(false);
         }
 
         //Check for locale.properties
-        if (!this.localeFile.exists()) {
+        if (!localeFile.exists()) {
             try {
-                FileUtils.copyInputStreamToFile(this.getResource("locale.properties"), this.localeFile);
+                FileUtils.copyInputStreamToFile(this.getResource("locale.properties"), localeFile);
             } catch (IOException ex) {
                 this.getLogger().log(Level.WARNING, "Failed to save locale.", ex);
                 this.getLogger().log(Level.WARNING, "Using inbuilt locale file.");
@@ -108,7 +107,7 @@ public class ShowItem extends JavaPlugin {
         }
 
         //Load locale.properties
-        try (FileInputStream fis = new FileInputStream(this.localeFile);
+        try (FileInputStream fis = new FileInputStream(localeFile);
                 InputStreamReader isr = new InputStreamReader(fis, StandardCharsets.UTF_8)) {
             this.locale.load(isr);
         } catch (IOException ex) {
